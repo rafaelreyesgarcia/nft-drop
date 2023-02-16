@@ -1,7 +1,14 @@
+import { sanityClient, urlFor } from '@/sanity';
+import { Collection } from '@/typings';
 import { useAddress, useDisconnect, useMetamask } from '@thirdweb-dev/react'
+import { GetServerSideProps } from 'next';
 import React from 'react'
 
-function NFTDropPage() {
+interface Props {
+  collection: Collection
+}
+
+function NFTDropPage({collection}: Props) {
   // auth
   const connectWithMetamask = useMetamask();
   const address = useAddress();
@@ -38,7 +45,7 @@ function NFTDropPage() {
             '
           >
             <img
-              src="/nft.png"
+              src={urlFor(collection.previewImage).url()}
               alt="nft"
               className='
                 w-44 rounded-xl object-cover
@@ -53,14 +60,14 @@ function NFTDropPage() {
             '
           >
             <h1
-              className='text-4xl font-bold text-white'
+              className='text-4xl font-bold text-white capitalize'
             >
-              Sunflowers
+              {collection.title}
             </h1>
             <h2
               className='text-xl text-gray-300'
             >
-              a collection of sunflowers on the blockchain!
+              A collection of magic mushrooms on the blockchain!
             </h2>
           </div>
         </div>
@@ -85,7 +92,7 @@ function NFTDropPage() {
               sm:w-80
             '
           >
-            Mint your own <span className='font-extrabold underline decoration-pink-600/50'>sunflower</span>
+            Mint your own <span className='font-extrabold underline decoration-pink-600/50'>mushroom</span>
           </h1>
           <button
             className='
@@ -116,7 +123,7 @@ function NFTDropPage() {
           '
         >
           <img
-            src="/nft-main.png"
+            src={urlFor(collection.image).url()}
             alt="nft"
             className='
               w-80 object-cover pb-4
@@ -129,7 +136,7 @@ function NFTDropPage() {
               lg:text-5xl lg:font-extrabold
             '
           >
-            Sentient Sunflowers
+            Magic Mushrooms
           </h1>
           <p
             className='
@@ -156,4 +163,49 @@ function NFTDropPage() {
   )
 }
 
-export default NFTDropPage
+export default NFTDropPage;
+
+export const getServerSideProps: GetServerSideProps = async({params}) => {
+  const query = `
+    *[_type == "collection" && slug.current == $id][0] {
+      _id,
+      title,
+      address,
+      description,
+      collectionName,
+      image {
+        asset
+      },
+      previewImage {
+        asset
+      },
+      slug {
+        current
+      },
+      creator-> {
+        _id,
+        name,
+        address,
+        slug {
+          current
+        },
+      },
+    }
+  `
+
+  const collection = await sanityClient.fetch(query, {
+    id: params?.id
+  })
+
+  if (!collection) {
+    return {
+      notFound: true
+    }
+  }
+
+  return {
+    props: {
+      collection
+    }
+  }
+}
