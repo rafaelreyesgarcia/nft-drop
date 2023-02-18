@@ -1,8 +1,11 @@
 import { sanityClient, urlFor } from '@/sanity';
 import { Collection } from '@/typings';
-import { useAddress, useDisconnect, useMetamask } from '@thirdweb-dev/react'
+import { useAddress, useDisconnect, useMetamask, useContract } from '@thirdweb-dev/react'
 import { GetServerSideProps } from 'next';
-import React from 'react'
+import Link from 'next/link';
+import React, { useEffect, useState } from 'react'
+import { BigNumber } from 'ethers'
+import toast, { Toaster } from 'react-hot-toast';
 
 interface Props {
   collection: Collection
@@ -13,7 +16,91 @@ function NFTDropPage({collection}: Props) {
   const connectWithMetamask = useMetamask();
   const address = useAddress();
   const disconnect = useDisconnect();
+  const { contract } = useContract(collection.address, 'nft-drop');
   // console.log(address);
+
+  const [claimedSupply, setClaimedSupply] = useState<number>(0);
+  const [totalSupply, setTotalSupply] = useState<BigNumber>();
+  const [ethPrice, setEthPrice] = useState<string>();
+  const [loading, setLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (!contract) return;
+
+    const fetchNftContractData = async () => {
+      setLoading(true);
+      const claimed = await contract.getAllClaimed();
+      const total = await contract.totalSupply();
+
+      setClaimedSupply(claimed.length);
+      setTotalSupply(total);
+      setLoading(false);
+    }
+    fetchNftContractData();
+  }, [contract])
+
+  useEffect(()=> {
+    if (!contract) return
+    const fetchPrice = async () => {
+      const claimConditions = await contract.claimConditions.getAll();
+      setEthPrice(claimConditions?.[0].currencyMetadata.displayValue)
+    }
+    fetchPrice();
+  }, [contract]);
+
+  const mintNft = () => {
+    if (!contract || !address ) return;
+
+    const quantity = 1;
+
+    setLoading(true);
+    const notification = toast.loading('Minting...', {
+      style: {
+        background: 'white',
+        color: 'green',
+        fontWeight: 'bolder',
+        fontSize: '17px',
+        padding: '20px',
+      }
+    })
+
+    contract.claimTo(address, quantity).then(async (tx) => {
+      const receipt = tx[0].receipt
+      const claimedTokenId = tx[0].id
+      const claimedNFT = await tx[0].data()
+
+      toast('WOOHOO! you minted some magic', {
+        duration: 8000,
+        style: {
+          background: 'green',
+          color: 'white',
+          fontWeight: 'bolder',
+          fontSize: '17px',
+          padding: '20px',
+        }
+      })
+
+      console.log(receipt)
+      console.log(claimedTokenId)
+      console.log(claimedNFT)
+
+    }).catch((err) => {
+      console.log(err)
+      toast('Whoops!...something went wrong', {
+        duration: 8000,
+        style: {
+          background: 'red',
+          color: 'white',
+          fontWeight: 'bolder',
+          fontSize: '17px',
+          padding: '20px',
+        }
+      })
+    }).finally(() => {
+      setLoading(false);
+      toast.dismiss(notification);
+    });
+  }
 
   return (
     // PARENT
@@ -24,6 +111,9 @@ function NFTDropPage({collection}: Props) {
         lg:grid lg:grid-cols-10
       '
     >
+      <Toaster
+        position='bottom-center'
+      />
       {/* left */}
       <div
         className='
@@ -67,7 +157,7 @@ function NFTDropPage({collection}: Props) {
             <h2
               className='text-xl text-gray-300'
             >
-              A collection of magic mushrooms on the blockchain!
+              {collection.description}
             </h2>
           </div>
         </div>
@@ -85,15 +175,17 @@ function NFTDropPage({collection}: Props) {
             flex items-center justify-between
           '
         >
-          <h1
-            className='
-              w-52 cursor-pointer
-              text-xl font-extralight
-              sm:w-80
-            '
-          >
-            Mint your own <span className='font-extrabold underline decoration-pink-600/50'>mushroom</span>
-          </h1>
+          <Link href={'/'}>
+            <h1
+              className='
+                w-52 cursor-pointer
+                text-xl font-extralight
+                sm:w-80
+              '
+            >
+              Mint your own <span className='font-extrabold underline decoration-pink-600/50'>mushroom</span>
+            </h1>
+          </Link>
           <button
             className='
               rounded-full capitalize
@@ -138,15 +230,37 @@ function NFTDropPage({collection}: Props) {
           >
             Magic Mushrooms
           </h1>
-          <p
-            className='
-              pt-2
-              text-xl text-green-500
-              
-            '
-          >
-            13/21 NFT's claimed
-          </p>
+
+          {loading ? (
+            <>
+              <p
+                className='
+                  pt-2
+                  text-xl text-purple-500 animate-pulse
+                '
+              >
+                loading supply count
+              </p>
+            </>
+          ) : (
+            <p
+              className='
+                pt-2
+                text-xl text-green-500
+              '
+            >
+              {claimedSupply}/{totalSupply?.toString()} NFT's claimed
+            </p>
+          )}
+          
+          {loading && (
+            <img
+              src="/loader.webp"
+              alt=""
+              className='h-16 w-16 pb-4 object-contain'
+            />
+          )}
+          
         </div>
         {/* mint button */}
         <button
@@ -154,9 +268,28 @@ function NFTDropPage({collection}: Props) {
             h-16 w-full rounded-full
             bg-red-500 text-white
             font-bold capitalize
+            disabled:bg-gray-400
           '
+          disabled={loading || claimedSupply === totalSupply?.toNumber() || !address}
+          onClick={mintNft}
         >
-          mint NFT (0.01 ETH)
+          {
+            loading // first ternary
+            ? (
+            <>loading</>
+          ) :
+            claimedSupply === totalSupply?.toNumber() // nested ternary
+           ? (
+            <>SOLD OUT</>
+          )
+            : !address // deeply nested ternary
+            ? (
+            <>Sign in to mint</>
+          ) : (
+            <span className='font-bold'>
+              mint NFT ({ethPrice} ETH)
+            </span>
+          )}
         </button>
       </div>
     </div>
